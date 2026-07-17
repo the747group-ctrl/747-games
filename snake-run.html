@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SNAKE RUN — The 747 Lab</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎰</text></svg>">
+<style>
+  :root{
+    --black:#0a0a0a; --black-light:#141414; --black-card:#1a1a1a;
+    --felt-green:#1a472a; --felt-dark:#0f2d1a;
+    --gold:#FFD700; --gold-bright:#ffe44d; --gold-dim:#b8960f;
+    --cream:#FFF8DC; --cream-dim:rgba(255,248,220,.6);
+    --purple:#8B5CF6; --purple-dim:#6d3fd4;
+    --danger:#cc2222; --danger-bright:#ff3333;
+    --font-heading:'Playfair Display',Georgia,serif;
+    --font-body:'Space Grotesk',system-ui,sans-serif;
+    --font-mono:'JetBrains Mono','Courier New',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--black);font-family:var(--font-body)}
+  #wrap{position:relative;height:100%;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;background:var(--felt-dark);touch-action:none;cursor:crosshair;
+    box-shadow:0 0 60px rgba(255,215,0,.08), inset 0 0 120px rgba(0,0,0,.5)}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at center, rgba(10,10,10,.82) 0%, rgba(10,10,10,.95) 100%);
+    color:var(--cream);text-align:center;z-index:10;padding:24px}
+  .overlay.hidden{display:none}
+  .title{font-family:var(--font-heading);font-size:clamp(2.6rem,9vw,4.6rem);color:var(--gold);
+    text-shadow:0 0 10px rgba(255,215,0,.5),0 0 30px rgba(255,215,0,.2);letter-spacing:.04em;line-height:1.05}
+  .subtitle{font-family:var(--font-mono);font-size:.85rem;color:var(--cream-dim);letter-spacing:.35em;
+    text-transform:uppercase;margin-top:10px}
+  .rules{margin:26px 0;font-size:.95rem;color:var(--cream-dim);line-height:1.9;max-width:420px}
+  .rules b{color:var(--gold)}
+  .rules .p{color:var(--purple)}
+  .rules .d{color:var(--danger-bright)}
+  .btn{font-family:var(--font-mono);font-size:1rem;letter-spacing:.2em;text-transform:uppercase;
+    background:transparent;color:var(--gold);border:1px solid var(--gold-dim);padding:16px 44px;cursor:pointer;
+    transition:all .25s cubic-bezier(.22,1,.36,1)}
+  .btn:hover{background:var(--gold);color:var(--black);box-shadow:0 0 20px rgba(255,215,0,.4),0 0 60px rgba(255,215,0,.15)}
+  .lucky{margin-bottom:26px;text-align:center}
+  .lucky input{font-family:var(--font-mono);font-size:1.6rem;font-weight:700;text-align:center;letter-spacing:.15em;
+    width:130px;padding:10px 0;background:rgba(255,215,0,.06);color:var(--gold);border:1px solid var(--gold-dim);
+    border-radius:2px;outline:none;transition:box-shadow .25s}
+  .lucky input:focus{box-shadow:0 0 20px rgba(255,215,0,.4),0 0 60px rgba(255,215,0,.15)}
+  .stat-big{font-family:var(--font-heading);font-size:3.4rem;color:var(--gold);margin:6px 0 2px}
+  .stat-label{font-family:var(--font-mono);font-size:.7rem;letter-spacing:.3em;color:var(--cream-dim);text-transform:uppercase}
+  .brand{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-family:var(--font-mono);
+    font-size:.62rem;letter-spacing:.3em;color:rgba(255,248,220,.35);text-transform:uppercase;z-index:11;pointer-events:none}
+  .vignette{position:absolute;inset:0;pointer-events:none;z-index:5;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div class="vignette"></div>
+
+  <div id="menu" class="overlay">
+    <div class="title">SNAKE&nbsp;RUN</div>
+    <div class="subtitle">A Casino Noir Snake-Stack Run</div>
+    <div class="rules">
+      Steer your chip stack across the floor.<br>
+      <b>+ Gold chips</b> grow the stack &nbsp;·&nbsp; <span class="p">? chips</span> are a gamble<br>
+      <span class="d">Sharks, traps &amp; the Big Ball</span> cost you chips<br>
+      Beat the <b>VAULT NUMBER</b> at the end to crack it.<br><br>
+      <span style="font-family:var(--font-mono);font-size:.75rem;letter-spacing:.15em">DRAG / MOUSE / ← → TO STEER</span>
+    </div>
+    <div class="lucky">
+      <div class="stat-label" style="margin-bottom:8px">Pick your number — it rides the crown</div>
+      <input id="luckyNum" type="tel" inputmode="numeric" maxlength="3" value="747" aria-label="Your lucky number">
+    </div>
+    <button class="btn" id="btnStart">Ante Up</button>
+  </div>
+
+  <div id="dead" class="overlay hidden">
+    <div class="title" style="color:var(--danger-bright);text-shadow:0 0 20px rgba(204,34,34,.4)">BUSTED</div>
+    <div style="margin:20px 0">
+      <div class="stat-label">Final Stack</div><div class="stat-big" id="deadStack">0</div>
+      <div class="stat-label" style="margin-top:8px">Level Reached</div>
+      <div style="font-family:var(--font-mono);font-size:1.3rem;color:var(--cream)" id="deadLevel">1</div>
+    </div>
+    <button class="btn" id="btnRetry">Buy Back In</button>
+  </div>
+
+  <div id="win" class="overlay hidden">
+    <div class="title">VAULT&nbsp;CRACKED</div>
+    <div style="margin:20px 0">
+      <div class="stat-label">Haul</div><div class="stat-big" id="winStack">0</div>
+      <div class="stat-label" style="margin-top:8px">Next Table</div>
+      <div style="font-family:var(--font-mono);font-size:1.3rem;color:var(--purple)" id="winLevel">2</div>
+    </div>
+    <button class="btn" id="btnNext">Raise the Stakes</button>
+  </div>
+
+  <div class="brand">Developed by The 747 Lab</div>
+</div>
+
+<script>
+'use strict';
+/* ============ HIGH ROLLER — Casino Noir snake-stack runner ============ */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+let W = 420, H = 740, DPR = Math.min(window.devicePixelRatio || 1, 2);
+function resize(){
+  const aw = window.innerWidth, ah = window.innerHeight;
+  const ratio = 420/740;
+  if (aw/ah > ratio){ H = ah; W = Math.round(ah*ratio); } else { W = aw; H = Math.round(aw/ratio); }
+  cv.width = W*DPR; cv.height = H*DPR;
+  cv.style.width = W+'px'; cv.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', resize); resize();
+
+/* ---------- audio: procedural SFX, no files ---------- */
+let AC = null;
+function audio(){ if(!AC){ AC = new (window.AudioContext||window.webkitAudioContext)(); } if(AC.state==='suspended') AC.resume(); }
+function tone(f, dur, type, vol, slide){
+  if(!AC) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = type||'sine'; o.frequency.setValueAtTime(f, t);
+  if(slide) o.frequency.exponentialRampToValueAtTime(slide, t+dur);
+  g.gain.setValueAtTime(vol||.15, t); g.gain.exponentialRampToValueAtTime(.0001, t+dur);
+  o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t+dur+.02);
+}
+function sfxChip(n){ const base = 880 + Math.min(n,20)*30; tone(base,.09,'sine',.12,base*1.5); tone(base*1.5,.06,'triangle',.06); }
+function sfxMystery(good){ good ? (tone(660,.12,'sine',.12,990), tone(990,.18,'sine',.09,1320)) : tone(220,.25,'sawtooth',.12,110); }
+function sfxHit(){ tone(140,.2,'sawtooth',.18,60); tone(90,.25,'square',.1,50); }
+function sfxGate(){ tone(523,.1,'triangle',.12,784); tone(784,.14,'triangle',.1,1047); }
+function sfxWin(){ [523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,.3,'triangle',.14),i*110)); }
+function sfxDead(){ [392,330,262,196].forEach((f,i)=>setTimeout(()=>tone(f,.3,'sawtooth',.1),i*130)); }
+
+/* ---------- game state ---------- */
+const G = {
+  state:'menu', level:1, stack:10, best:0,
+  camY:0, speed:150, dist:0, levelLen:5200,
+  head:{x:210,y:0}, targetX:210,
+  trail:[], segs:[],
+  pickups:[], walls:[], hazards:[], gates:[], enemies:[], rollers:[],
+  vault:null, parts:[], floats:[],
+  shake:0, inv:0, time:0, over:false, lucky:'747'
+};
+window.__game = G; // debug hook
+
+const SEG_R = 13, SEG_SPACE = 15, PICK_R = 15;
+
+/* ---------- level generation ---------- */
+function rngFactory(seed){ let s = seed>>>0; return ()=>{ s = (s*1664525 + 1013904223)>>>0; return s/4294967296; }; }
+
+function genLevel(lv){
+  G.pickups.length=0; G.walls.length=0; G.hazards.length=0; G.gates.length=0;
+  G.enemies.length=0; G.rollers.length=0; G.parts.length=0; G.floats.length=0;
+  const R = rngFactory(747*lv+13);
+  G.levelLen = 4600 + lv*700;
+  let y = -420; // world y decreases upward; start above head
+  const margin = 42;
+
+  const patterns = ['lanes','cluster','zigzag','trap','roller','enemy','gate','gamble'];
+  while (y > -G.levelLen + 700){
+    const p = patterns[Math.floor(R()*patterns.length)];
+    if (p==='lanes'){
+      // two chip-walls forming a corridor with pickups inside (the IG video look)
+      const gapX = margin+60 + R()*(W-2*margin-120);
+      const rows = 6 + Math.floor(R()*5);
+      for(let i=0;i<rows;i++){
+        const yy = y - i*34;
+        for(let x=margin; x<W-margin; x+=30){
+          if (Math.abs(x-gapX) < 62) continue;
+          G.walls.push({x, y:yy, r:14});
+        }
+        if (i%2===0) G.pickups.push({x:gapX, y:yy, r:PICK_R, type:'chip', val:2+Math.floor(R()*4)});
+      }
+      y -= rows*34 + 130;
+    } else if (p==='cluster'){
+      const cx = margin+40 + R()*(W-2*margin-80);
+      for(let i=0;i<8;i++){
+        const a = R()*Math.PI*2, d = R()*70;
+        G.pickups.push({x:Math.max(margin,Math.min(W-margin,cx+Math.cos(a)*d)), y:y-Math.sin(a)*d-30, r:PICK_R, type:'chip', val:1+Math.floor(R()*5)});
+      }
+      y -= 220;
+    } else if (p==='zigzag'){
+      const n = 4 + Math.floor(R()*3);
+      for(let i=0;i<n;i++){
+        const fromLeft = i%2===0;
+        const len = .55 + R()*.15;
+        const yy = y - i*150;
+        for(let x=0; x<(W-2*margin)*len; x+=30){
+          G.walls.push({x: fromLeft ? margin+x : W-margin-x, y:yy, r:14});
+        }
+        G.pickups.push({x: fromLeft ? W-margin-40 : margin+40, y:yy-60, r:PICK_R, type:'chip', val:3+Math.floor(R()*5)});
+      }
+      y -= n*150 + 120;
+    } else if (p==='trap'){
+      const n = 2+Math.floor(R()*3);
+      for(let i=0;i<n;i++){
+        G.hazards.push({x:margin+30+R()*(W-2*margin-60), y:y-R()*160, r:22, cost:4+lv});
+      }
+      y -= 260;
+    } else if (p==='roller'){
+      G.rollers.push({x:W/2, y:y-80, r:44, vx:(R()<.5?-1:1)*(70+lv*10), cost:8+lv*2});
+      y -= 300;
+    } else if (p==='enemy'){
+      const n = 1+Math.floor(R()*2);
+      for(let i=0;i<n;i++){
+        G.enemies.push({x:margin+40+R()*(W-2*margin-80), y:y-i*130, r:18, vx:(R()<.5?-1:1)*(40+lv*8), cost:6+lv*2, t:R()*10});
+      }
+      y -= 280;
+    } else if (p==='gate'){
+      const toll = Math.floor((6+lv*3)*(0.7+R()*.6));
+      G.gates.push({x:0, y:y-40, w:W, h:26, val:toll});
+      // reward beyond the toll
+      for(let i=0;i<4;i++) G.pickups.push({x:margin+40+R()*(W-2*margin-80), y:y-140-R()*90, r:PICK_R, type:'chip', val:4+Math.floor(R()*5)});
+      y -= 330;
+    } else { // gamble
+      for(let i=0;i<3;i++){
+        G.pickups.push({x:margin+40+R()*(W-2*margin-80), y:y-R()*140, r:PICK_R, type:'mystery', val:0});
+      }
+      y -= 240;
+    }
+  }
+  // the vault boss
+  const target = Math.floor(18 + lv*14 + lv*lv*2);
+  G.vault = {x:W/2, y:-G.levelLen, r:56, val:target, opened:false};
+}
+
+/* ---------- run control ---------- */
+const luckyInput = document.getElementById('luckyNum');
+try { const saved = localStorage.getItem('snakerun-lucky'); if (saved) luckyInput.value = saved; } catch(e){}
+function luckyNumber(){
+  const v = (luckyInput.value||'').replace(/[^0-9]/g,'').slice(0,3);
+  return v.length ? v : '747';
+}
+
+let pendingOverlay = null;
+function startRun(lv, keepStack){
+  if (pendingOverlay){ clearTimeout(pendingOverlay); pendingOverlay = null; }
+  G.lucky = luckyNumber();
+  try { localStorage.setItem('snakerun-lucky', G.lucky); } catch(e){}
+  G.level = lv;
+  G.stack = keepStack ? Math.max(10, Math.floor(G.stack*.6)) : 10;
+  G.head.x = W/2; G.head.y = 0; G.targetX = W/2;
+  G.camY = 0; G.dist = 0; G.speed = 145 + lv*8;
+  G.trail = [{x:G.head.x, y:G.head.y}];
+  G.inv = 0; G.time = 0; G.over = false;
+  genLevel(lv);
+  G.state = 'playing';
+  show(null);
+}
+
+function show(id){
+  for (const el of ['menu','dead','win']) document.getElementById(el).classList.toggle('hidden', el!==id);
+}
+
+document.getElementById('btnStart').addEventListener('click', ()=>{ if(G.state!=='menu') return; audio(); startRun(1,false); });
+document.getElementById('btnRetry').addEventListener('click', ()=>{ if(G.state!=='dead') return; audio(); startRun(G.level,false); });
+document.getElementById('btnNext').addEventListener('click', ()=>{ if(G.state!=='win') return; audio(); startRun(G.level+1,true); });
+
+/* ---------- input ---------- */
+const keys = {};
+window.addEventListener('keydown', e=>{ keys[e.key]=true; });
+window.addEventListener('keyup', e=>{ keys[e.key]=false; });
+function pointerX(e){
+  const r = cv.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+  return Math.max(20, Math.min(W-20, cx));
+}
+cv.addEventListener('mousemove', e=>{ if(G.state==='playing') G.targetX = pointerX(e); });
+cv.addEventListener('touchmove', e=>{ e.preventDefault(); if(G.state==='playing') G.targetX = pointerX(e); }, {passive:false});
+cv.addEventListener('touchstart', e=>{ if(G.state==='playing') G.targetX = pointerX(e); });
+
+/* ---------- helpers ---------- */
+function burst(x,y,color,n){
+  for(let i=0;i<n;i++){
+    G.parts.push({x,y, vx:(Math.random()-.5)*260, vy:(Math.random()-.5)*260-60, life:.6+Math.random()*.4, color, r:2+Math.random()*3});
+  }
+}
+function floatText(x,y,txt,color){ G.floats.push({x,y,txt,color,life:1}); }
+function addChips(n, x, y){
+  G.stack += n;
+  if (n>0){ sfxChip(n); floatText(x,y,'+'+n,'#FFD700'); burst(x,y,'#FFD700',10); }
+}
+function loseChips(n, x, y, why){
+  if (G.inv > 0) return;
+  G.stack -= n; G.inv = .9; G.shake = 8;
+  sfxHit(); floatText(x,y,'-'+n,'#ff3333'); burst(x,y,'#ff3333',14);
+  if (G.stack <= 0){ G.stack = 0; die(); }
+}
+function die(){
+  if (G.over) return; G.over = true;
+  G.state = 'dead'; sfxDead();
+  document.getElementById('deadStack').textContent = Math.max(0,G.stack);
+  document.getElementById('deadLevel').textContent = 'TABLE '+G.level;
+  pendingOverlay = setTimeout(()=>show('dead'), 500);
+}
+function winLevel(){
+  if (G.over) return; G.over = true;
+  G.state = 'win'; sfxWin();
+  document.getElementById('winStack').textContent = G.stack;
+  document.getElementById('winLevel').textContent = 'TABLE '+(G.level+1);
+  burst(G.vault.x, G.vault.y, '#FFD700', 60);
+  pendingOverlay = setTimeout(()=>show('win'), 900);
+}
+
+/* ---------- update ---------- */
+function update(dt){
+  if (G.state !== 'playing') return;
+  G.time += dt;
+  if (G.inv > 0) G.inv -= dt;
+  if (G.shake > 0) G.shake = Math.max(0, G.shake - dt*30);
+
+  // steering
+  if (keys['ArrowLeft'] || keys['a']) G.targetX -= 320*dt;
+  if (keys['ArrowRight']|| keys['d']) G.targetX += 320*dt;
+  G.targetX = Math.max(24, Math.min(W-24, G.targetX));
+
+  // head moves up in world space, x eases to target
+  G.head.y -= G.speed*dt;
+  G.head.x += (G.targetX - G.head.x) * Math.min(1, dt*9);
+  G.dist = -G.head.y;
+
+  // trail history for the stack to follow
+  const last = G.trail[0];
+  if (!last || Math.hypot(G.head.x-last.x, G.head.y-last.y) > 4){
+    G.trail.unshift({x:G.head.x, y:G.head.y});
+    if (G.trail.length > 400) G.trail.pop();
+  }
+
+  // camera follows head, keep head ~62% down the screen
+  G.camY = G.head.y - H*0.62;
+
+  // walls: solid — sliding push + chip cost on hard hit
+  for (const w of G.walls){
+    if (Math.abs(w.y - G.head.y) > 60) continue;
+    const dx = G.head.x - w.x, dy = G.head.y - w.y;
+    const d = Math.hypot(dx,dy), min = SEG_R + w.r;
+    if (d < min && d > 0.001){
+      const push = (min-d);
+      G.head.x += (dx/d)*push; G.targetX = G.head.x;
+      if (push > 6) loseChips(1, G.head.x, G.head.y, 'wall');
+    }
+  }
+
+  // pickups
+  for (let i=G.pickups.length-1; i>=0; i--){
+    const p = G.pickups[i];
+    if (Math.abs(p.y - G.head.y) > 80) continue;
+    if (Math.hypot(p.x-G.head.x, p.y-G.head.y) < SEG_R + p.r){
+      if (p.type==='chip') addChips(p.val, p.x, p.y);
+      else {
+        const good = Math.random() < .55;
+        const amt = 3 + Math.floor(Math.random()*8);
+        if (good){ sfxMystery(true); addChips(amt, p.x, p.y); }
+        else { sfxMystery(false); floatText(p.x,p.y,'-'+amt,'#8B5CF6'); burst(p.x,p.y,'#8B5CF6',12);
+               G.stack = Math.max(0, G.stack-amt); if(G.stack<=0) die(); }
+      }
+      G.pickups.splice(i,1);
+    }
+  }
+
+  // gates (full-width toll bars)
+  for (const g of G.gates){
+    if (!g.hit && G.head.y < g.y && G.head.y > g.y - 30){
+      g.hit = true;
+      if (G.stack > g.val){ G.stack -= g.val; sfxGate(); floatText(G.head.x, G.head.y-30, '-'+g.val+' TOLL', '#FFF8DC'); }
+      else { G.stack = 0; die(); }
+    }
+  }
+
+  // hazards (static traps)
+  for (const hz of G.hazards){
+    if (Math.abs(hz.y - G.head.y) > 70) continue;
+    if (Math.hypot(hz.x-G.head.x, hz.y-G.head.y) < SEG_R + hz.r - 4) loseChips(hz.cost, hz.x, hz.y, 'trap');
+  }
+
+  // rollers (giant roulette balls bouncing wall to wall)
+  for (const r of G.rollers){
+    r.x += r.vx*dt;
+    if (r.x < r.r+16){ r.x=r.r+16; r.vx*=-1; }
+    if (r.x > W-r.r-16){ r.x=W-r.r-16; r.vx*=-1; }
+    if (Math.abs(r.y - G.head.y) > 120) continue;
+    if (Math.hypot(r.x-G.head.x, r.y-G.head.y) < SEG_R + r.r - 4) loseChips(r.cost, r.x, r.y, 'roller');
+  }
+
+  // enemies (card sharks pacing)
+  for (const e of G.enemies){
+    e.t += dt; e.x += e.vx*dt;
+    if (e.x < 34){ e.x=34; e.vx*=-1; }
+    if (e.x > W-34){ e.x=W-34; e.vx*=-1; }
+    if (Math.abs(e.y - G.head.y) > 80) continue;
+    if (Math.hypot(e.x-G.head.x, e.y-G.head.y) < SEG_R + e.r) loseChips(e.cost, e.x, e.y, 'shark');
+  }
+
+  // vault — the finish line: resolves on crossing its y-line no matter where you are
+  const v = G.vault;
+  if (v && !v.opened && (G.head.y < v.y + v.r + SEG_R || Math.hypot(v.x-G.head.x, v.y-G.head.y) < SEG_R + v.r + 6)){
+    v.opened = true;
+    if (G.stack >= v.val) winLevel(); else { G.stack = 0; die(); }
+  }
+
+  // particles + floats
+  for (let i=G.parts.length-1;i>=0;i--){
+    const p = G.parts[i]; p.life -= dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 300*dt;
+    if (p.life<=0) G.parts.splice(i,1);
+  }
+  for (let i=G.floats.length-1;i>=0;i--){
+    const f = G.floats[i]; f.life -= dt; f.y -= 40*dt;
+    if (f.life<=0) G.floats.splice(i,1);
+  }
+}
+
+/* ---------- draw ---------- */
+function chip(x,y,r,fill,ring,label,labelColor){
+  ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fillStyle = fill; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = ring; ctx.stroke();
+  // edge dashes like a poker chip
+  ctx.save(); ctx.translate(x,y); ctx.strokeStyle = ring; ctx.lineWidth = r*.28;
+  for(let i=0;i<6;i++){ ctx.rotate(Math.PI/3); ctx.beginPath(); ctx.arc(0,0,r*.82,-.22,.22); ctx.stroke(); }
+  ctx.restore();
+  if (label){
+    ctx.fillStyle = labelColor||'#0a0a0a'; ctx.font = `bold ${Math.round(r*.9)}px 'Courier New',monospace`;
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label, x, y+1);
+  }
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const sx = (Math.random()-.5)*G.shake, sy = (Math.random()-.5)*G.shake;
+  ctx.save(); ctx.translate(sx, sy - G.camY*0 );
+
+  // felt background with drift
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#0f2d1a'); grad.addColorStop(.5,'#1a472a'); grad.addColorStop(1,'#0f2d1a');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+  // felt texture lines scrolling
+  ctx.strokeStyle = 'rgba(255,248,220,.04)'; ctx.lineWidth = 1;
+  const off = (-G.camY)%64;
+  for(let yy=-64+off; yy<H+64; yy+=64){ ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(W,yy); ctx.stroke(); }
+  // rail edges
+  ctx.fillStyle = 'rgba(10,10,10,.75)'; ctx.fillRect(0,0,14,H); ctx.fillRect(W-14,0,14,H);
+  ctx.fillStyle = 'rgba(184,150,15,.5)'; ctx.fillRect(14,0,2,H); ctx.fillRect(W-16,0,2,H);
+
+  const toY = wy => wy - G.camY;
+
+  // gates
+  for (const g of G.gates){
+    const y = toY(g.y); if (y<-60||y>H+60) continue;
+    ctx.fillStyle = g.hit ? 'rgba(255,248,220,.08)' : 'rgba(139,92,246,.25)';
+    ctx.fillRect(16, y-13, W-32, 26);
+    ctx.strokeStyle = '#8B5CF6'; ctx.lineWidth=2; ctx.strokeRect(16, y-13, W-32, 26);
+    if (!g.hit){
+      ctx.fillStyle='#FFF8DC'; ctx.font="bold 15px 'Courier New',monospace"; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('TOLL '+g.val, W/2, y);
+    }
+  }
+
+  // walls (house chips)
+  for (const w of G.walls){
+    const y = toY(w.y); if (y<-30||y>H+30) continue;
+    chip(w.x, y, w.r, '#141414', '#3a3a3a', '', null);
+  }
+
+  // hazards
+  for (const hz of G.hazards){
+    const y = toY(hz.y); if (y<-40||y>H+40) continue;
+    ctx.save(); ctx.translate(hz.x,y); ctx.rotate(G.time*.8);
+    ctx.fillStyle = '#cc2222';
+    for(let i=0;i<8;i++){ ctx.rotate(Math.PI/4);
+      ctx.beginPath(); ctx.moveTo(0,-hz.r); ctx.lineTo(6,-hz.r+12); ctx.lineTo(-6,-hz.r+12); ctx.closePath(); ctx.fill(); }
+    ctx.beginPath(); ctx.arc(0,0,hz.r-10,0,7); ctx.fillStyle='#1a1a1a'; ctx.fill();
+    ctx.strokeStyle='#ff3333'; ctx.lineWidth=2; ctx.stroke();
+    ctx.restore();
+  }
+
+  // rollers — giant roulette ball
+  for (const r of G.rollers){
+    const y = toY(r.y); if (y<-90||y>H+90) continue;
+    ctx.beginPath(); ctx.arc(r.x,y,r.r,0,7); ctx.fillStyle='#FFF8DC'; ctx.fill();
+    ctx.strokeStyle='#0a0a0a'; ctx.lineWidth=3; ctx.stroke();
+    ctx.save(); ctx.translate(r.x,y); ctx.rotate(r.x*.02);
+    ctx.fillStyle='#0a0a0a';
+    ctx.beginPath(); ctx.arc(0,0,r.r*.34,0,7); ctx.fill();
+    for(let i=0;i<5;i++){ ctx.rotate(Math.PI*2/5); ctx.beginPath(); ctx.arc(0,-r.r*.62,r.r*.2,0,7); ctx.fill(); }
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(r.x - r.r*.3, y - r.r*.35, r.r*.18, 0, 7); ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fill();
+  }
+
+  // enemies — card sharks (fin + shades vibe, abstract)
+  for (const e of G.enemies){
+    const y = toY(e.y); if (y<-40||y>H+40) continue;
+    const bob = Math.sin(e.t*6)*2;
+    ctx.save(); ctx.translate(e.x, y+bob);
+    ctx.fillStyle = '#8B5CF6';
+    ctx.beginPath(); ctx.moveTo(0,-e.r-8); ctx.lineTo(10,2); ctx.lineTo(-10,2); ctx.closePath(); ctx.fill(); // fin
+    ctx.beginPath(); ctx.arc(0,6,e.r*.85,0,7); ctx.fillStyle='#1a1a1a'; ctx.fill();
+    ctx.strokeStyle='#6d3fd4'; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle='#ff3333'; ctx.fillRect(-8,2,6,3); ctx.fillRect(2,2,6,3); // eyes
+    ctx.restore();
+  }
+
+  // pickups
+  for (const p of G.pickups){
+    const y = toY(p.y); if (y<-30||y>H+30) continue;
+    const pulse = 1 + Math.sin(G.time*5 + p.x)*0.06;
+    if (p.type==='chip'){
+      chip(p.x, y, p.r*pulse, '#FFD700', '#b8960f', '+'+p.val, '#0a0a0a');
+    } else {
+      chip(p.x, y, p.r*pulse, '#8B5CF6', '#6d3fd4', '?', '#FFF8DC');
+    }
+  }
+
+  // vault
+  if (G.vault){
+    const v = G.vault, y = toY(v.y);
+    if (y > -140 && y < H+140){
+      ctx.save(); ctx.translate(v.x, y);
+      const glow = ctx.createRadialGradient(0,0,10,0,0,v.r+40);
+      glow.addColorStop(0,'rgba(255,215,0,.35)'); glow.addColorStop(1,'rgba(255,215,0,0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0,0,v.r+40,0,7); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0,v.r,0,7); ctx.fillStyle='#1a1a1a'; ctx.fill();
+      ctx.lineWidth=5; ctx.strokeStyle='#FFD700'; ctx.stroke();
+      ctx.rotate(G.time*.4);
+      ctx.strokeStyle='#b8960f'; ctx.lineWidth=3;
+      for(let i=0;i<3;i++){ ctx.rotate(Math.PI*2/3); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-v.r*.72); ctx.stroke(); }
+      ctx.rotate(-G.time*.4*4);
+      ctx.setTransform(DPR,0,0,DPR,0,0); ctx.translate(sx,sy);
+      ctx.fillStyle='#FFD700'; ctx.font="bold 26px 'Courier New',monospace"; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(v.val, v.x, y);
+      ctx.font="9px 'Courier New',monospace"; ctx.fillStyle='rgba(255,248,220,.7)';
+      ctx.fillText('VAULT — BEAT THIS NUMBER', v.x, y + v.r + 16);
+      ctx.restore();
+    }
+  }
+
+  // ---- snake stack ----
+  const count = Math.max(1, Math.min(30, Math.floor(G.stack/2)+1));
+  const flash = G.inv > 0 && Math.floor(G.inv*12)%2===0;
+  // segments along trail
+  let placed = 0, needed = count, distAcc = 0, ti = 0;
+  const pts = [];
+  let px = G.head.x, py = G.head.y;
+  pts.push({x:px,y:py});
+  while (placed < needed && ti < G.trail.length-1){
+    const a = G.trail[ti], b = G.trail[ti+1];
+    const seg = Math.hypot(b.x-a.x, b.y-a.y);
+    distAcc += seg;
+    if (distAcc >= SEG_SPACE*(placed+1)){ pts.push({x:b.x, y:b.y}); placed++; }
+    ti++;
+  }
+  for (let i=pts.length-1; i>=1; i--){
+    const s = pts[i], y = toY(s.y);
+    chip(s.x, y, SEG_R, flash?'#ff3333':'#FFD700', '#b8960f', '', null);
+  }
+  // head
+  const hy = toY(G.head.y);
+  chip(G.head.x, hy, SEG_R+4, flash?'#ff3333':'#FFF8DC', '#FFD700', G.lucky, '#0a0a0a');
+  // crown
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.moveTo(G.head.x-10, hy-SEG_R-6); ctx.lineTo(G.head.x-10, hy-SEG_R-14);
+  ctx.lineTo(G.head.x-5, hy-SEG_R-9); ctx.lineTo(G.head.x, hy-SEG_R-15);
+  ctx.lineTo(G.head.x+5, hy-SEG_R-9); ctx.lineTo(G.head.x+10, hy-SEG_R-14);
+  ctx.lineTo(G.head.x+10, hy-SEG_R-6); ctx.closePath(); ctx.fill();
+
+  // particles
+  for (const p of G.parts){
+    ctx.globalAlpha = Math.max(0,p.life);
+    ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, toY(p.y), p.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // float texts
+  for (const f of G.floats){
+    ctx.globalAlpha = Math.max(0,f.life);
+    ctx.fillStyle = f.color; ctx.font="bold 17px 'Courier New',monospace"; ctx.textAlign='center';
+    ctx.fillText(f.txt, f.x, toY(f.y));
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // HUD
+  if (G.state==='playing' || G.state==='dead' || G.state==='win'){
+    ctx.fillStyle='rgba(10,10,10,.65)'; ctx.fillRect(0,0,W,46);
+    ctx.fillStyle='#b8960f'; ctx.fillRect(0,46,W,1);
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.font="10px 'Courier New',monospace"; ctx.fillStyle='rgba(255,248,220,.55)';
+    ctx.fillText('STACK', 20, 15);
+    ctx.font="bold 22px 'Courier New',monospace"; ctx.fillStyle='#FFD700';
+    ctx.fillText(String(Math.max(0,G.stack)), 20, 32);
+    ctx.textAlign='center';
+    ctx.font="10px 'Courier New',monospace"; ctx.fillStyle='rgba(255,248,220,.55)';
+    ctx.fillText('TABLE', W/2, 15);
+    ctx.font="bold 16px 'Courier New',monospace"; ctx.fillStyle='#FFF8DC';
+    ctx.fillText(String(G.level), W/2, 32);
+    ctx.textAlign='right';
+    ctx.font="10px 'Courier New',monospace"; ctx.fillStyle='rgba(255,248,220,.55)';
+    ctx.fillText('VAULT', W-20, 15);
+    ctx.font="bold 16px 'Courier New',monospace"; ctx.fillStyle='#8B5CF6';
+    ctx.fillText(G.vault ? String(G.vault.val) : '—', W-20, 32);
+    // progress bar
+    const prog = Math.min(1, G.dist / G.levelLen);
+    ctx.fillStyle='rgba(255,248,220,.15)'; ctx.fillRect(0,H-4,W,4);
+    ctx.fillStyle='#FFD700'; ctx.fillRect(0,H-4,W*prog,4);
+  }
+}
+
+/* ---------- main loop ---------- */
+let lastT = performance.now();
+function loop(t){
+  const dt = Math.min(.033, (t-lastT)/1000); lastT = t;
+  update(dt); draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
